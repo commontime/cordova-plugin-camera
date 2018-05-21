@@ -57,6 +57,10 @@ static NSString* toBase64(NSData* data) {
     }
 }
 
+NSString* const FILE_ENCRYPTION_PLUGIN_SERVICE_NAME = @"FileEncryption";
+NSString* const ENCRYPT_FILE_MESSAGE_ID = @"ENCRYPT_FILE";
+NSString* const FILE_ENCRYPTION_PLUGIN_NOT_INSTALLED_MSG = @"To encrypt an image the file encryption plugin must be installed";
+
 @implementation CDVPictureOptions
 
 + (instancetype) createFromTakePictureArguments:(CDVInvokedUrlCommand*)command
@@ -81,6 +85,8 @@ static NSString* toBase64(NSData* data) {
     pictureOptions.saveToPhotoAlbum = [[command argumentAtIndex:9 withDefault:@(NO)] boolValue];
     pictureOptions.popoverOptions = [command argumentAtIndex:10 withDefault:nil];
     pictureOptions.cameraDirection = [[command argumentAtIndex:11 withDefault:@(UIImagePickerControllerCameraDeviceRear)] unsignedIntegerValue];
+    pictureOptions.saveToPrivateStorage = NO;
+    pictureOptions.saveEncrypted = [[command argumentAtIndex:13 withDefault:@(NO)] boolValue];
     
     pictureOptions.popoverSupported = NO;
     pictureOptions.usesGeolocation = NO;
@@ -98,6 +104,9 @@ static NSString* toBase64(NSData* data) {
 @end
 
 @implementation CDVCamera
+{
+    CDVInvokedUrlCommand* takePictureCommand;
+}
 
 + (void)initialize
 {
@@ -138,6 +147,8 @@ static NSString* toBase64(NSData* data) {
 
 - (void)takePicture:(CDVInvokedUrlCommand*)command
 {
+    takePictureCommand = command;
+    
     self.hasPendingOperation = YES;
     
     __weak CDVCamera* weakSelf = self;
@@ -372,7 +383,7 @@ static NSString* toBase64(NSData* data) {
                     self.metadata = [[NSMutableDictionary alloc] init];
                     
                     NSMutableDictionary* EXIFDictionary = [[controllerMetadata objectForKey:(NSString*)kCGImagePropertyExifDictionary]mutableCopy];
-                    if (EXIFDictionary)	{
+                    if (EXIFDictionary) {
                         [self.metadata setObject:EXIFDictionary forKey:(NSString*)kCGImagePropertyExifDictionary];
                     }
                     
@@ -481,7 +492,18 @@ static NSString* toBase64(NSData* data) {
                 if (![data writeToFile:filePath options:NSAtomicWrite error:&err]) {
                     result = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsString:[err localizedDescription]];
                 } else {
-                    result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:[[self urlTransformer:[NSURL fileURLWithPath:filePath]] absoluteString]];
+                    NSArray *data = [[NSArray alloc] initWithObjects:filePath, nil];
+                    
+                    if (options.saveEncrypted) {
+                        if ([self.appDelegate getCommandInstance:FILE_ENCRYPTION_PLUGIN_SERVICE_NAME] != nil) {
+                            CDVInvokedUrlCommand *newCommand = [[CDVInvokedUrlCommand alloc] initWithArguments:data callbackId:takePictureCommand.callbackId className:takePictureCommand.className methodName:takePictureCommand.methodName];
+                            [[NSNotificationCenter defaultCenter] postNotificationName:ENCRYPT_FILE_MESSAGE_ID object:newCommand];
+                        } else {
+                            result = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:FILE_ENCRYPTION_PLUGIN_NOT_INSTALLED_MSG];
+                        }
+                    } else {
+                        result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:[[self urlTransformer:[NSURL fileURLWithPath:filePath]] absoluteString]];
+                    }
                 }
             }
         }
@@ -584,15 +606,15 @@ static NSString* toBase64(NSData* data) {
 
 - (CLLocationManager*)locationManager
 {
-	if (locationManager != nil) {
-		return locationManager;
-	}
+    if (locationManager != nil) {
+        return locationManager;
+    }
     
-	locationManager = [[CLLocationManager alloc] init];
-	[locationManager setDesiredAccuracy:kCLLocationAccuracyNearestTenMeters];
-	[locationManager setDelegate:self];
+    locationManager = [[CLLocationManager alloc] init];
+    [locationManager setDesiredAccuracy:kCLLocationAccuracyNearestTenMeters];
+    [locationManager setDelegate:self];
     
-	return locationManager;
+    return locationManager;
 }
 
 - (void)locationManager:(CLLocationManager*)manager didUpdateToLocation:(CLLocation*)newLocation fromLocation:(CLLocation*)oldLocation

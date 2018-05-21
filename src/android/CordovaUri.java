@@ -19,6 +19,7 @@
 
 package org.apache.cordova.camera;
 
+import android.content.Context;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -43,13 +44,13 @@ public class CordovaUri {
      * We always expect a FileProvider string to be passed in for the file that we create
      *
      */
-    CordovaUri (Uri inputUri)
+    CordovaUri (Uri inputUri, Context ctx)
     {
         //Determine whether the file is a content or file URI
         if(inputUri.getScheme().equals("content"))
         {
             androidUri = inputUri;
-            fileName = getFileNameFromUri(androidUri);
+            fileName = getFileNameFromUri(androidUri, ctx);
             fileUri = Uri.parse("file://" + fileName);
         }
         else
@@ -93,12 +94,18 @@ public class CordovaUri {
   * we own the context in this case.
  */
 
-    private String getFileNameFromUri(Uri uri) {
+    private String getFileNameFromUri(Uri uri, Context ctx) {
         String fullUri = uri.toString();
-        String partial_path = fullUri.split("external_files")[1];
-        File external_storage = Environment.getExternalStorageDirectory();
-        String path = external_storage.getAbsolutePath() + partial_path;
+        String path = null;
+        if (fullUri.contains("external_files")) {
+            String partial_path = fullUri.split("external_files")[1];
+            File external_storage = Environment.getExternalStorageDirectory();
+            path = external_storage.getAbsolutePath() + partial_path;
+        } else if (fullUri.contains("app_directory")) {
+            String partial_path = fullUri.split("app_directory")[1];
+            File internal_storage = ctx.getFilesDir();
+            path = internal_storage + partial_path;
+        }
         return path;
-
     }
 }

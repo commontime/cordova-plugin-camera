@@ -55,6 +55,8 @@ typedef NSUInteger CDVMediaType;
 @property (assign) BOOL saveToPhotoAlbum;
 @property (strong) NSDictionary* popoverOptions;
 @property (assign) UIImagePickerControllerCameraDevice cameraDirection;
+@property (assign) BOOL saveToPrivateStorage;
+@property (assign) BOOL saveEncrypted;
 
 @property (assign) BOOL popoverSupported;
 @property (assign) BOOL usesGeolocation;

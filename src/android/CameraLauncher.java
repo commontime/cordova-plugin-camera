@@ -32,19 +32,17 @@ import java.util.Date;
 import org.apache.cordova.BuildHelper;
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
-import org.apache.cordova.CordovaResourceApi;
 import org.apache.cordova.LOG;
 import org.apache.cordova.PermissionHelper;
 import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 import android.Manifest;
-import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ContentValues;
-import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -55,12 +53,9 @@ import android.media.ExifInterface;
 import android.media.MediaScannerConnection;
 import android.media.MediaScannerConnection.MediaScannerConnectionClient;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.provider.DocumentsContract;
 import android.provider.MediaStore;
-import android.provider.OpenableColumns;
 import android.support.v4.content.FileProvider;
 import android.util.Base64;
 import android.content.pm.PackageManager;
@@ -112,6 +107,8 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
     private boolean correctOrientation;     // Should the pictures orientation be corrected
     private boolean orientationCorrected;   // Has the picture's orientation been corrected
     private boolean allowEdit;              // Should we allow the user to crop the image.
+    private boolean saveToPrivateStorage;   // Should the picture be saved to the app's private storage
+    private boolean saveEncrypted;          // Should the image be saved encrypted.
 
     protected final static String[] permissions = { Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE };
 
@@ -124,6 +121,12 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
     private ExifHelper exifData;            // Exif data from source
     private String applicationId;
 
+    private static final String FILE_ENCRYPTION_PLUGIN_SERVICE_NAME = "FileEncryption";
+    private static final String FILE_ENCRYPTION_PLUGIN_NOT_INSTALLED_MSG = "To encrypt an image the file encryption plugin must be installed";
+    private static final String FILE_ENCRYPTION_FAILED_MSG = "Failed to encrypt image";
+    private static final String ENCRYPT_FILE_MESSAGE_ID = "ENCRYPT_FILE";
+    private static final String ENCRYPT_FILE_URI_KEY = "uri";
+    private static final String ENCRYPT_FILE_CALLBACK_KEY = "cb";
 
     /**
      * Executes the request and returns PluginResult.
@@ -162,6 +165,8 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
             this.allowEdit = args.getBoolean(7);
             this.correctOrientation = args.getBoolean(8);
             this.saveToPhotoAlbum = args.getBoolean(9);
+            this.saveToPrivateStorage = args.getBoolean(12);
+            this.saveEncrypted = args.getBoolean(13);
 
             // If the user specifies a 0 or smaller width/height
             // make it -1 so later comparisons succeed
@@ -213,20 +218,24 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
     // LOCAL METHODS
     //--------------------------------------------------------------------------
 
-    private String getTempDirectoryPath() {
+    private String getTempDirectoryPath(boolean putInFilesDirectory) {
         File cache = null;
 
-        // SD Card Mounted
-        if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
-            cache = cordova.getActivity().getExternalCacheDir();
-        }
-        // Use internal storage
-        else {
-            cache = cordova.getActivity().getCacheDir();
-        }
+        if (putInFilesDirectory) {
+            cache = cordova.getActivity().getFilesDir();
+        } else {
+            // SD Card Mounted
+            if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+                cache = cordova.getActivity().getExternalCacheDir();
+            }
+            // Use internal storage
+            else {
+                cache = cordova.getActivity().getCacheDir();
+            }
 
-        // Create the cache directory if it doesn't exist
-        cache.mkdirs();
+            // Create the cache directory if it doesn't exist
+            cache.mkdirs();
+        }
         return cache.getAbsolutePath();
     }
 
@@ -294,7 +303,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
         File photo = createCaptureFile(encodingType);
         this.imageUri = new CordovaUri(FileProvider.getUriForFile(cordova.getActivity(),
                 applicationId + ".provider",
-                photo));
+                photo), cordova.getActivity());
         intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, imageUri.getCorrectUri());
         //We can write to this URI, this will hopefully allow us to write files to get to the next step
         intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
@@ -346,7 +355,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
             throw new IllegalArgumentException("Invalid Encoding Type: " + encodingType);
         }
 
-        return new File(getTempDirectoryPath(), fileName);
+        return new File(getTempDirectoryPath(this.saveToPrivateStorage), fileName);
     }
 
 
@@ -581,8 +590,24 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
                     exif.writeExifData();
                 }
 
-                // Send Uri back to JavaScript for viewing image
-                this.callbackContext.success(uri.toString());
+                if (this.saveEncrypted) {
+                    try {
+                        if (webView.getPluginManager().getPlugin(FILE_ENCRYPTION_PLUGIN_SERVICE_NAME) != null) {
+                            JSONObject data = new JSONObject();
+                            data.put(ENCRYPT_FILE_URI_KEY, uri);
+                            data.put(ENCRYPT_FILE_CALLBACK_KEY, callbackContext);
+                            webView.getPluginManager().postMessage(ENCRYPT_FILE_MESSAGE_ID, data);
+                        } else {
+                            callbackContext.error(FILE_ENCRYPTION_PLUGIN_NOT_INSTALLED_MSG);
+                        }
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                        callbackContext.error(FILE_ENCRYPTION_FAILED_MSG);
+                    }
+                } else {
+                    // Send Uri back to JavaScript for viewing image
+                    this.callbackContext.success(uri.toString());
+                }
 
             }
         } else {
@@ -591,6 +616,11 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
 
         this.cleanup(FILE_URI, this.imageUri.getFileUri(), galleryUri, bitmap);
         bitmap = null;
+    }
+
+    @Override
+    public Object onMessage(String id, Object data) {
+        return super.onMessage(id, data);
     }
 
     private String getPicturesPath() {
@@ -632,7 +662,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
 
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         //String fileName = "IMG_" + timeStamp + (this.encodingType == JPEG ? ".jpg" : ".png");
-        String modifiedPath = getTempDirectoryPath() + "/" + fileName;
+        String modifiedPath = getTempDirectoryPath(this.saveToPrivateStorage) + "/" + fileName;
 
         OutputStream os = new FileOutputStream(modifiedPath);
         CompressFormat compressFormat = this.encodingType == JPEG ?
@@ -966,7 +996,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
                 // Generate a temporary file
                 String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
                 String fileName = "IMG_" + timeStamp + (this.encodingType == JPEG ? ".jpg" : ".png");
-                localFile = new File(getTempDirectoryPath() + fileName);
+                localFile = new File(getTempDirectoryPath(this.saveToPrivateStorage) + fileName);
                 galleryUri = Uri.fromFile(localFile);
                 writeUncompressedImage(fileStream, galleryUri);
                 try {
@@ -1365,7 +1395,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
 
         if (state.containsKey("imageUri")) {
             //I have no idea what type of URI is being passed in
-            this.imageUri = new CordovaUri(Uri.parse(state.getString("imageUri")));
+            this.imageUri = new CordovaUri(Uri.parse(state.getString("imageUri")), cordova.getActivity());
         }
 
         this.callbackContext = callbackContext;
