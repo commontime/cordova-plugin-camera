@@ -127,6 +127,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
     private static final String ENCRYPT_FILE_MESSAGE_ID = "ENCRYPT_FILE";
     private static final String ENCRYPT_FILE_URI_KEY = "uri";
     private static final String ENCRYPT_FILE_CALLBACK_KEY = "cb";
+    private static final String ENCRYPT_FILE_CALLBACK_MSG_ID = "ENCRYPTION_RESPONSE";
 
     /**
      * Executes the request and returns PluginResult.
@@ -595,7 +596,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
                         if (webView.getPluginManager().getPlugin(FILE_ENCRYPTION_PLUGIN_SERVICE_NAME) != null) {
                             JSONObject data = new JSONObject();
                             data.put(ENCRYPT_FILE_URI_KEY, uri);
-                            data.put(ENCRYPT_FILE_CALLBACK_KEY, callbackContext);
+                            data.put(ENCRYPT_FILE_CALLBACK_KEY, ENCRYPT_FILE_CALLBACK_MSG_ID);
                             webView.getPluginManager().postMessage(ENCRYPT_FILE_MESSAGE_ID, data);
                         } else {
                             callbackContext.error(FILE_ENCRYPTION_PLUGIN_NOT_INSTALLED_MSG);
@@ -620,6 +621,19 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
 
     @Override
     public Object onMessage(String id, Object data) {
+        if (id.equals(ENCRYPT_FILE_CALLBACK_MSG_ID)) {
+            if (data != null) {
+                try {
+                    JSONObject jsonData = (JSONObject) data;
+                    callbackContext.success(jsonData.getString(ENCRYPT_FILE_URI_KEY));
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                    callbackContext.error("Failed to encrypt picture");
+                }
+            } else {
+                callbackContext.error("Failed to encrypt picture");
+            }
+        }
         return super.onMessage(id, data);
     }
 
