@@ -59,6 +59,7 @@ static NSString* toBase64(NSData* data) {
 
 NSString* const FILE_ENCRYPTION_PLUGIN_SERVICE_NAME = @"FileEncryption";
 NSString* const ENCRYPT_FILE_MESSAGE_ID = @"ENCRYPT_FILE";
+NSString* const ENCRYPT_FILE_CALLBACK_MSG_ID = @"ENCRYPTION_RESPONSE";
 NSString* const FILE_ENCRYPTION_PLUGIN_NOT_INSTALLED_MSG = @"To encrypt an image the file encryption plugin must be installed";
 
 @implementation CDVPictureOptions
@@ -114,6 +115,17 @@ NSString* const FILE_ENCRYPTION_PLUGIN_NOT_INSTALLED_MSG = @"To encrypt an image
 }
 
 @synthesize hasPendingOperation, pickerController, locationManager;
+
+- (void)pluginInitialize
+{
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(fileEncryptedNotification:) name:ENCRYPT_FILE_CALLBACK_MSG_ID object:nil];
+}
+
+- (void)fileEncryptedNotification:(NSNotification *)notification
+{
+    CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:[[self urlTransformer:[NSURL fileURLWithPath:notification.object]] absoluteString]];
+    [self.commandDelegate sendPluginResult:result callbackId:self.pickerController.callbackId];
+}
 
 - (NSURL*) urlTransformer:(NSURL*)url
 {
@@ -492,12 +504,10 @@ NSString* const FILE_ENCRYPTION_PLUGIN_NOT_INSTALLED_MSG = @"To encrypt an image
                 if (![data writeToFile:filePath options:NSAtomicWrite error:&err]) {
                     result = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsString:[err localizedDescription]];
                 } else {
-                    NSArray *data = [[NSArray alloc] initWithObjects:filePath, nil];
-                    
                     if (options.saveEncrypted) {
                         if ([self.appDelegate getCommandInstance:FILE_ENCRYPTION_PLUGIN_SERVICE_NAME] != nil) {
-                            CDVInvokedUrlCommand *newCommand = [[CDVInvokedUrlCommand alloc] initWithArguments:data callbackId:takePictureCommand.callbackId className:takePictureCommand.className methodName:takePictureCommand.methodName];
-                            [[NSNotificationCenter defaultCenter] postNotificationName:ENCRYPT_FILE_MESSAGE_ID object:newCommand];
+                            NSArray *data = [[NSArray alloc] initWithObjects:filePath, ENCRYPT_FILE_CALLBACK_MSG_ID, nil];
+                            [[NSNotificationCenter defaultCenter] postNotificationName:ENCRYPT_FILE_MESSAGE_ID object:data];
                         } else {
                             result = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:FILE_ENCRYPTION_PLUGIN_NOT_INSTALLED_MSG];
                         }
