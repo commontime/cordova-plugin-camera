@@ -639,6 +639,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
             if (data != null) {
                 try {
                     JSONObject jsonData = (JSONObject) data;
+                    String requestId = ((JSONObject) data).getString(ENCRYPT_DECRYPT_REQUEST_ID_KEY);
                     CallbackContext callbackContext = callbackContextList.get(requestId);
                     if (callbackContext == null) return super.onMessage(id, data);
                     callbackContextList.remove(requestId);
