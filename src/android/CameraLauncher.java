@@ -639,17 +639,13 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
             if (data != null) {
                 try {
                     JSONObject jsonData = (JSONObject) data;
-                    String requestId = ((JSONObject) data).getString(ENCRYPT_DECRYPT_REQUEST_ID_KEY);
-                    CallbackContext callbackContext = callbackContextList.get(requestId);
-                    if (callbackContext == null) return super.onMessage(id, data);
-                    callbackContextList.remove(requestId);
                     callbackContext.success(jsonData.getString(ENCRYPT_FILE_URI_KEY));
                 } catch (JSONException e) {
                     e.printStackTrace();
-                    Log.e(LOG_TAG, FILE_ENCRYPTION_FAILED_MSG);
+                    callbackContext.error(FILE_ENCRYPTION_FAILED_MSG);
                 }
             } else {
-                Log.e(LOG_TAG, FILE_ENCRYPTION_FAILED_MSG);
+                callbackContext.error(FILE_ENCRYPTION_FAILED_MSG);
             }
         }
         return super.onMessage(id, data);
