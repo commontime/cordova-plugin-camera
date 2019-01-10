@@ -30,6 +30,8 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
+import android.util.Log;
+import android.util.ArrayMap;
 
 import org.apache.cordova.BuildHelper;
 import org.apache.cordova.CallbackContext;
