@@ -28,6 +28,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Map;
+import java.util.UUID;
 
 import org.apache.cordova.BuildHelper;
 import org.apache.cordova.CallbackContext;
@@ -113,6 +115,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
     protected final static String[] permissions = { Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE };
 
     public CallbackContext callbackContext;
+    private Map<String, CallbackContext> callbackContextList;
     private int numPics;
 
     private MediaScannerConnection conn;    // Used to update gallery app with newly-written files
@@ -128,6 +131,7 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
     private static final String ENCRYPT_FILE_URI_KEY = "uri";
     private static final String ENCRYPT_FILE_CALLBACK_KEY = "cb";
     private static final String ENCRYPT_FILE_CALLBACK_MSG_ID = "ENCRYPTION_RESPONSE";
+    private static final String ENCRYPT_DECRYPT_REQUEST_ID_KEY = "encryptDecryptRequestId";
 
     /**
      * Executes the request and returns PluginResult.
@@ -138,7 +142,12 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
      * @return                  A PluginResult object with a status and message.
      */
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
+        
+        if (callbackContextList == null)
+            callbackContextList = new ArrayMap<String, CallbackContext>();
+
         this.callbackContext = callbackContext;
+
         //Adding an API to CoreAndroid to get the BuildConfigValue
         //This allows us to not make this a breaking change to embedding
         this.applicationId = (String) BuildHelper.getBuildConfigValue(cordova.getActivity(), "APPLICATION_ID");
@@ -594,7 +603,10 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
                 if (this.saveEncrypted) {
                     try {
                         if (webView.getPluginManager().getPlugin(FILE_ENCRYPTION_PLUGIN_SERVICE_NAME) != null) {
+                            String encryptRequestId = UUID.randomUUID().toString();
+                            callbackContextList.put(encryptRequestId, this.callbackContext);
                             JSONObject data = new JSONObject();
+                            data.put(ENCRYPT_DECRYPT_REQUEST_ID_KEY, encryptRequestId);
                             data.put(ENCRYPT_FILE_URI_KEY, uri);
                             data.put(ENCRYPT_FILE_CALLBACK_KEY, ENCRYPT_FILE_CALLBACK_MSG_ID);
                             webView.getPluginManager().postMessage(ENCRYPT_FILE_MESSAGE_ID, data);
@@ -625,13 +637,16 @@ public class CameraLauncher extends CordovaPlugin implements MediaScannerConnect
             if (data != null) {
                 try {
                     JSONObject jsonData = (JSONObject) data;
+                    CallbackContext callbackContext = callbackContextList.get(requestId);
+                    if (callbackContext == null) return super.onMessage(id, data);
+                    callbackContextList.remove(requestId);
                     callbackContext.success(jsonData.getString(ENCRYPT_FILE_URI_KEY));
                 } catch (JSONException e) {
                     e.printStackTrace();
-                    callbackContext.error("Failed to encrypt picture");
+                    Log.e(LOG_TAG, FILE_ENCRYPTION_FAILED_MSG);
                 }
             } else {
-                callbackContext.error("Failed to encrypt picture");
+                Log.e(LOG_TAG, FILE_ENCRYPTION_FAILED_MSG);
             }
         }
         return super.onMessage(id, data);
