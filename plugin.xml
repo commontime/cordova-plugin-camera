@@ -69,7 +69,7 @@
         <config-file target="AndroidManifest.xml" parent="/*">
             <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
         </config-file>
-        <edit-config file="AndroidManifest.xml" mode="merge" target="application">
+<!--         <edit-config file="AndroidManifest.xml" mode="merge" target="application">
           <provider
               android:name="android.support.v4.content.FileProvider"
               android:authorities="${applicationId}.provider"
@@ -79,7 +79,7 @@
                   android:name="android.support.FILE_PROVIDER_PATHS"
                   android:resource="@xml/provider_paths"/>
           </provider>
-        </edit-config>
+        </edit-config> -->
 
         <source-file src="src/android/CameraLauncher.java" target-dir="src/org/apache/cordova/camera" />
         <source-file src="src/android/CordovaUri.java" target-dir="src/org/apache/cordova/camera" />
